@@ -34,8 +34,7 @@ Execution Time (ms)      17349               2212                15137          
   - `Multithreaded`: Time taken for all threads to complete their increments (e.g., 17,349 ms). This includes thread creation, synchronization overhead from `fetch_add`, and parallel execution across cores.
   - `Single-threaded`: Time taken to increment a regular integer sequentially for the same total number of increments (e.g., 2,212 ms). This runs on a single core without threading overhead.
   - `Difference`: Multithreaded time minus single-threaded time (e.g., 17,349 - 2,212 = 15,137 ms). A positive difference indicates the multithreaded version took longer, which is unexpected for parallelism and suggests significant overhead (see below for discussion).
-  - `Speed-Up`: Calculated in your code as `multithreaded / singlethreaded` (e.g., 17,349 / 2,212 ≈ 7.84313). This is a misnomer:
-    - **Correction**: In performance analysis, "speedup" typically means `single-threaded time / multithreaded time`, where a value > 1 indicates the parallel version is faster. Here, it should be 2,212 / 17,349 ≈ 0.1275, meaning the multithreaded version is ~7.8 times *slower*. The current output (7.84313) reflects the inverse, which could confuse readers expecting a traditional speedup metric.
+  - `Speed-Up`: Calculated in your code as `multithreaded / singlethreaded` (e.g., 17,349 / 2,212 ≈ 7.84313).
 
 ### Why the Multithreaded Version is Slower
 The example output shows the multithreaded execution (17,349 ms) taking much longer than the single-threaded one (2,212 ms), which is counterintuitive for parallelism. This likely stems from:
