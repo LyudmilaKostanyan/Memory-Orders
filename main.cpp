@@ -76,6 +76,9 @@ int main() {
     double duration_singlethreaded = timer.duration<zen::timer::msec>().count();
     int final_singlethreaded = count;
     
+    std::cout << "Number of iterations: " << increments_per_thread << "\n";
+    std::cout << "Number of threads: " << num_threads << "\n\n";
+
     print_table_header();
     print_value_row(final_multithreaded, final_singlethreaded);
     print_table_row("Execution Time (ms)", duration_multithreaded, duration_singlethreaded);
