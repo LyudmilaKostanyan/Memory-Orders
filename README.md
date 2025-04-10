@@ -80,8 +80,8 @@ Assuming you're using CMake:
 
 ### Clone the Repository
 ```bash
-git clone https://github.com/username/Thread-Safe-Counter-Experiment.git
-cd Thread-Safe-Counter-Experiment
+git clone https://github.com/username/Memory-Orders.git
+cd Memory-Orders
 ```
 
 ### Build
