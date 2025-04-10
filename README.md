@@ -1,77 +1,97 @@
-# Thread-Safe Counter with Atomics
+# Thread-Safe Counter and Memory Order Exploration
 
 ## Overview
-This project implements a thread-safe counter using `std::atomic<int>` with `memory_order_seq_cst` in C++. It spawns multiple threads to increment a shared counter in parallel, then compares the results and performance against a single-threaded implementation. The goal is to demonstrate the correctness and efficiency of atomic operations in a concurrent environment, showcasing how concurrency relies on well-defined memory operations.
+This project explores the behavior of shared counters in multithreaded C++ applications, demonstrating how different synchronization strategies affect correctness and performance. It compares:
+
+- Atomic operations with different `std::memory_order` settings
+- Mutex-based synchronization
+- A single-threaded baseline
+- A non-thread-safe version (no synchronization)
+
+The main goal is to understand memory consistency models and thread safety in practice using `std::atomic<int>` and standard C++11 concurrency features.
 
 ## Problem Description
-The task is to create a shared counter that multiple threads can increment safely without data races. Using `std::atomic<int>` with sequential consistency (`memory_order_seq_cst`), the program:
-- Spawns a number of threads equal to the hardware's concurrency limit (e.g., 8 on an 8-core system).
-- Each thread increments the counter 100,000,000 times.
-- Measures the final count and execution time for the multithreaded version.
-- Compares this to a single-threaded version incrementing the counter the same total number of times (e.g., 800,000,000 for 8 threads).
-- Outputs a table showing the counter values and performance metrics (execution time, difference, and speedup).
+We want to increment a shared counter concurrently from multiple threads. The challenge is to do this **safely and efficiently**, avoiding data races. The program:
 
-This exercise highlights the importance of atomic operations for thread safety and evaluates the performance trade-offs of parallelism.
+- Launches a number of threads equal to the hardware concurrency level.
+- Each thread increments a shared counter a fixed number of times (e.g., 5,000,000).
+- Tests several approaches:
+  - **No synchronization** (raw `int`, to demonstrate data races)
+  - **Mutex protection**
+  - **`std::atomic` with various memory orders**
+  - **Single-threaded baseline**
+- Measures execution time and final counter value for each approach.
 
-## Example Output
-Below is an example output from running the program on an 8-core system:
+This setup lets you observe how memory order affects correctness and performance.
 
+## Memory Orders Explained
+In C++, `std::atomic` allows specifying memory ordering semantics that affect how operations on atomic variables are seen by different threads. Here’s a brief summary:
+
+| Memory Order       | Description                                                                 |
+|--------------------|-----------------------------------------------------------------------------|
+| `memory_order_relaxed`     | Only guarantees atomicity. No ordering or visibility guarantees.       |
+| `memory_order_acquire`     | Prevents reordering of subsequent reads/writes before the load.        |
+| `memory_order_release`     | Prevents reordering of prior reads/writes after the store.             |
+| `memory_order_acq_rel`     | Combines `acquire` on load and `release` on store.                     |
+| `memory_order_seq_cst`     | Provides a single total order visible to all threads. Strictest model. |
+
+Understanding these orders is critical when writing performant and correct lock-free concurrent code.
+
+## Example Output (8 Threads, 5,000,000 Iterations Each)
 ```
-Metric                   Multithreaded       Single-threaded     Difference          Speed-Up       
-----------------------------------------------------------------------------------------------------
-Counter Values           800000000           800000000           0                                  
-Execution Time (ms)      17349               2212                15137               7.84313        
+Threads: 8
+Iteration: 5000000
+
+Memory Order             Multithreaded (ms)       Counter Values
+---------------------------------------------------------------------------
+NonAtomic                95                       8083377
+SingleThreaded           110                      40000000
+Relaxed                  658                      40000000
+Acquire                  708                      40000000
+Release                  742                      40000000
+AcquireRelease           806                      40000000
+Sequential               818                      40000000
+WithMutex                414975                   40000000
 ```
 
-## Explanation of Output
-- **Counter Values**:
-  - `Multithreaded`: The final value of the `std::atomic<int> counter` after all threads complete their increments (e.g., 800,000,000). With 8 threads each incrementing 100,000,000 times, this matches the expected total.
-  - `Single-threaded`: The final value of the regular `int count` after incrementing it `num_threads * increments_per_thread` times sequentially (e.g., 800,000,000).
-  - `Difference`: The absolute difference between the multithreaded and single-threaded values (e.g., 0). A value of 0 confirms the atomic counter is thread-safe and correct, as both methods achieve the same result.
-  - `Speed-Up`: Left blank in this row (as shown in your output with a space), since speedup doesn’t apply to counter values—it’s a correctness metric, not a performance one.
+### Output Breakdown
+- **NonAtomic**: Demonstrates a data race. Counter is incorrect (`8083377 << 40000000`).
+- **SingleThreaded**: Correct. No overhead from threading. Acts as a baseline.
+- **Relaxed**: Fastest atomic method but only guarantees atomicity. Still correct due to simplicity of operation.
+- **Acquire/Release/AcqRel**: More ordering guarantees → slightly slower.
+- **Sequential**: Ensures global visibility order. Safest but slower.
+- **WithMutex**: Correct but very slow due to locking overhead on every increment.
 
-- **Execution Time (ms)**:
-  - `Multithreaded`: Time taken for all threads to complete their increments (e.g., 17,349 ms). This includes thread creation, synchronization overhead from `fetch_add`, and parallel execution across cores.
-  - `Single-threaded`: Time taken to increment a regular integer sequentially for the same total number of increments (e.g., 2,212 ms). This runs on a single core without threading overhead.
-  - `Difference`: Multithreaded time minus single-threaded time (e.g., 17,349 - 2,212 = 15,137 ms). A positive difference indicates the multithreaded version took longer, which is unexpected for parallelism and suggests significant overhead (see below for discussion).
-  - `Speed-Up`: Calculated in your code as `multithreaded / singlethreaded` (e.g., 17,349 / 2,212 ≈ 7.84313).
+## Explanation
+### Why `NonAtomic` is wrong:
+- Multiple threads modify the same variable without coordination → lost updates.
 
-### Why the Multithreaded Version is Slower
-The example output shows the multithreaded execution (17,349 ms) taking much longer than the single-threaded one (2,212 ms), which is counterintuitive for parallelism. This likely stems from:
-1. **Contention on the Atomic Counter**: With 8 threads repeatedly calling `fetch_add` on the same `std::atomic<int>` with `memory_order_seq_cst`, there’s heavy contention. Sequential consistency enforces a total order across all threads, causing frequent cache invalidation and synchronization delays.
-2. **Overhead**: Thread creation, context switching, and atomic operation costs outweigh the benefits of parallelism for this workload.
-3. **Workload Nature**: Incrementing a counter is a trivial operation with high contention and no independent computation, making it a poor candidate for parallelism compared to tasks with more substantial per-thread work.
+### Why `Relaxed` is correct:
+- Each thread only uses `fetch_add`, which is atomic. No intermediate shared state → atomicity is enough.
 
-## How to Compile and Run the Code
-This section assumes the code is part of a repository and uses CMake for building. Adjust the repository URL and directory names as needed.
+### Why stricter orders are slower:
+- Stronger memory guarantees introduce fences and synchronization that slow down execution.
+
+### Why Mutex is slowest:
+- Locking every increment creates **massive contention**.
+
+## How to Compile and Run
+Assuming you're using CMake:
 
 ### Clone the Repository
-If you haven't cloned the repository yet, do so by running:
-
 ```bash
 git clone https://github.com/username/Thread-Safe-Counter-Experiment.git
 cd Thread-Safe-Counter-Experiment
 ```
 
-Replace `username` with the actual GitHub username hosting the repository.
-
-### Build the Project
-Once in the project directory, compile the code with CMake:
-
+### Build
 ```bash
 cmake -S . -B build
 cmake --build build
 ```
 
-This generates the executable (e.g., `main`) in the `build` directory. Ensure you have the following installed:
-- **CMake**: For building the project.
-- **C++ Compiler**: E.g., `g++` (supporting C++11 or later).
-- **Standard C++ Library**: Included with most compilers.
-
-### Run the Compiled Executable
-After building, run the program:
-
+### Run
 ```bash
 cd build
-./main  # On Windows, use `main.exe`
+./main
 ```
